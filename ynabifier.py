@@ -45,7 +45,7 @@ def open_file(filename: str, offset: int) -> csv.DictReader:
     return csv.DictReader(csvfile, dialect=dialect)
 
 
-def convert(filename: str, type: str) -> None:
+def convert(filename: str, filetype: str) -> None:
     '''Converts the file given by filename according to the given type. Exports to same directory'''
 
     reader = open_file(filename, 6)
@@ -53,7 +53,7 @@ def convert(filename: str, type: str) -> None:
     basename_without_ext = os.path.splitext(
         os.path.basename(os.path.abspath(filename)))[0]
 
-    dirname = os.path.dirname(__file__)
+    dirname = os.path.dirname(filename)
     export_filename = f'{basename_without_ext}-ynab.csv'
     export_filename = os.path.join(
         dirname, export_filename)
@@ -64,10 +64,10 @@ def convert(filename: str, type: str) -> None:
         writer.writeheader()
 
         for row in reader:
-            if type == "Girokonto":
+            if filetype == "Girokonto":
                 writer.writerow({'Date': row['Wertstellung'], 'Payee': row['Auftraggeber / Begünstigter'],
                                 'Memo': row['Verwendungszweck'], 'Amount': row['Betrag (EUR)']})
-            elif type == "VISA":
+            elif filetype == "VISA":
                 writer.writerow({'Date': row['Wertstellung'], 'Payee': row['Beschreibung'],
                                 'Memo': row[''], 'Amount': row['Betrag (EUR)']})
 
