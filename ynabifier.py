@@ -3,40 +3,24 @@
 Module Docstring
 """
 
-__author__ = "Dennis Irrgang"
-__version__ = "0.1.0"
-__license__ = "AGPL-3.0"
-
-
 import sys
 import argparse
 import csv
 import os
+from enum import Enum
 
 
-def init_argparse() -> argparse.ArgumentParser:
-    '''Initialises argparser for CLI use.'''
-    parser = argparse.ArgumentParser(
-        usage="%(prog)s [OPTION] [FILE]...",
-
-        description="Convert Anki cards from an .apkg deck into Obsidian compatible markdown files."
-    )
-
-    parser.add_argument(
-        "-v", "--version", action="version",
-        version=f"{parser.prog} {__version__}"
-    )
-
-    parser.add_argument('files', nargs='*')
-
-    return parser
+class AccountType(Enum):
+    GIROKONTO = "Girokonto"
+    VISA = "VISA"
+    GIROKONTO_NEU = "Girokonto (Neu)"
 
 
 def open_file(filename: str, offset: int) -> csv.DictReader:
-    '''Opens a CSV file and returns a DictReader'''
-    csvfile = open(filename)
-    dialect = csv.Sniffer().sniff(csvfile.read(1024))
+    """Opens a CSV file and returns a DictReader."""
+    csvfile = open(filename, mode="r", encoding="utf-8")
 
+    dialect = csv.Sniffer().sniff(csvfile.read(1024))
     csvfile.seek(0)
 
     for _ in range(offset):
@@ -45,54 +29,96 @@ def open_file(filename: str, offset: int) -> csv.DictReader:
     return csv.DictReader(csvfile, dialect=dialect)
 
 
-def convert(filename: str, filetype: str) -> None:
-    '''Converts the file given by filename according to the given type. Exports to same directory'''
+def convert_string_to_float(s):
+    """Converts a numeric string to a float."""
+    numeric_string = "".join(char for char in s if char.isdigit() or char in "-,")
 
-    reader = open_file(filename, 6)
+    numeric_string = numeric_string.replace(",", ".")
+
+    return float(numeric_string)
+
+
+def convert(filename: str, filetype: AccountType) -> None:
+    """Converts the file given by filename according to the given type. Exports to the same directory."""
+
+    if filetype == AccountType.GIROKONTO or filetype == AccountType.VISA:
+        reader = open_file(filename, 6)
+    elif filetype == AccountType.GIROKONTO_NEU:
+        reader = open_file(filename, 4)
 
     basename_without_ext = os.path.splitext(
-        os.path.basename(os.path.abspath(filename)))[0]
+        os.path.basename(os.path.abspath(filename))
+    )[0]
+    export_filename = f"{basename_without_ext}-ynab.csv"
+    export_filename = os.path.join(os.path.dirname(filename), export_filename)
 
-    dirname = os.path.dirname(filename)
-    export_filename = f'{basename_without_ext}-ynab.csv'
-    export_filename = os.path.join(
-        dirname, export_filename)
-
-    with open(export_filename, mode="w", encoding='utf-8') as csvfile:
+    with open(export_filename, mode="w", encoding="utf-8") as csvfile:
         fieldnames = ["Date", "Payee", "Memo", "Amount"]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
 
         for row in reader:
-            if filetype == "Girokonto":
-                writer.writerow({'Date': row['Wertstellung'], 'Payee': row['Auftraggeber / Begünstigter'],
-                                'Memo': row['Verwendungszweck'], 'Amount': row['Betrag (EUR)']})
-            elif filetype == "VISA":
-                writer.writerow({'Date': row['Wertstellung'], 'Payee': row['Beschreibung'],
-                                'Memo': row[''], 'Amount': row['Betrag (EUR)']})
+            if filetype == AccountType.GIROKONTO:
+                writer.writerow(
+                    {
+                        "Date": row["Wertstellung"],
+                        "Payee": row["Auftraggeber / Begünstigter"],
+                        "Memo": row["Verwendungszweck"],
+                        "Amount": row["Betrag (EUR)"],
+                    }
+                )
+            elif filetype == AccountType.VISA:
+                writer.writerow(
+                    {
+                        "Date": row["Wertstellung"],
+                        "Payee": row["Beschreibung"],
+                        "Memo": row[""],
+                        "Amount": row["Betrag (EUR)"],
+                    }
+                )
+            elif filetype == AccountType.GIROKONTO_NEU:
+                if convert_string_to_float(row["Betrag"]) > 0:
+                    writer.writerow(
+                        {
+                            "Date": row["Wertstellung"],
+                            "Payee": row["Zahlungspflichtige*r"],
+                            "Memo": row["Verwendungszweck"],
+                            "Amount": row["Betrag"],
+                        }
+                    )
+                else:
+                    writer.writerow(
+                        {
+                            "Date": row["Wertstellung"],
+                            "Payee": row["Zahlungsempfänger*in"],
+                            "Memo": row["Verwendungszweck"],
+                            "Amount": row["Betrag"],
+                        }
+                    )
 
 
 def main() -> None:
-    """Converts .csv files into YNAB4 compatible .csv files.
-    Parameters:
-    None (passed through CLI, see argparse/help)
-    Returns:
-    None
-   """
-
+    """Converts .csv files into YNAB4 compatible .csv files."""
     parser = argparse.ArgumentParser(
-        description='Convert CSVs to YNAB4 compatibility')
+        usage="%(prog)s [OPTION] [FILE]...",
+        description="Convert DKB CSV export files to YNAB4 compatible CSV files.",
+    )
 
-    parser.add_argument('account_type', metavar='type', type=str)
-    parser.add_argument('file', metavar='file', help='Filename')
+    parser.add_argument(
+        "-v", "--version", action="version", version=f"{parser.prog} 0.1.0"
+    )
+
+    parser.add_argument("account_type", type=AccountType, choices=list(AccountType))
+    parser.add_argument("file", help="Filename")
 
     args = parser.parse_args()
 
     try:
         convert(args.file, args.account_type)
 
-    except (FileNotFoundError, IsADirectoryError) as err:
-
+    except FileNotFoundError as err:
+        print(f"{sys.argv[0]}: {args.file}: {err.strerror}", file=sys.stderr)
+    except IsADirectoryError as err:
         print(f"{sys.argv[0]}: {args.file}: {err.strerror}", file=sys.stderr)
 
 
