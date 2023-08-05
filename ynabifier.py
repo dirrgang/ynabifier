@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Module Docstring
+Module Docstring.
 """
 
-import sys
 import argparse
 import csv
 import os
+import sys
 from enum import Enum
 
 
@@ -17,7 +17,7 @@ class AccountType(Enum):
 
 
 def open_file(filename: str, offset: int) -> csv.DictReader:
-    """Opens a CSV file and returns a DictReader."""
+    """Open a CSV file and return a DictReader."""
     csvfile = open(filename, mode="r", encoding="utf-8")
 
     dialect = csv.Sniffer().sniff(csvfile.read(1024))
@@ -30,7 +30,7 @@ def open_file(filename: str, offset: int) -> csv.DictReader:
 
 
 def convert_string_to_float(s):
-    """Converts a numeric string to a float."""
+    """Convert a numeric string to a float."""
     numeric_string = "".join(char for char in s if char.isdigit() or char in "-,")
 
     numeric_string = numeric_string.replace(",", ".")
@@ -39,7 +39,7 @@ def convert_string_to_float(s):
 
 
 def convert(filename: str, filetype: AccountType) -> None:
-    """Converts the file given by filename according to the given type. Exports to the same directory."""
+    """Convert the file given by filename according to the given type. Export to the same directory."""
 
     if filetype == AccountType.GIROKONTO or filetype == AccountType.VISA:
         reader = open_file(filename, 6)
@@ -98,7 +98,7 @@ def convert(filename: str, filetype: AccountType) -> None:
 
 
 def main() -> None:
-    """Converts .csv files into YNAB4 compatible .csv files."""
+    """Convert .csv files into YNAB4 compatible .csv files."""
     parser = argparse.ArgumentParser(
         usage="%(prog)s [OPTION] [FILE]...",
         description="Convert DKB CSV export files to YNAB4 compatible CSV files.",
