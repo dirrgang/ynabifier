@@ -3,10 +3,10 @@
 Module Docstring
 """
 
-import sys
 import argparse
 import csv
 import os
+import sys
 from enum import Enum
 
 
@@ -77,13 +77,13 @@ def convert(filename: str, filetype: AccountType) -> None:
                     }
                 )
             elif filetype == AccountType.GIROKONTO_NEU:
-                if convert_string_to_float(row["Betrag"]) > 0:
+                if convert_string_to_float(row["Betrag (€)"]) > 0:
                     writer.writerow(
                         {
                             "Date": row["Wertstellung"],
                             "Payee": row["Zahlungspflichtige*r"],
                             "Memo": row["Verwendungszweck"],
-                            "Amount": row["Betrag"],
+                            "Amount": row["Betrag (€)"],
                         }
                     )
                 else:
@@ -92,7 +92,7 @@ def convert(filename: str, filetype: AccountType) -> None:
                             "Date": row["Wertstellung"],
                             "Payee": row["Zahlungsempfänger*in"],
                             "Memo": row["Verwendungszweck"],
-                            "Amount": row["Betrag"],
+                            "Amount": row["Betrag (€)"],
                         }
                     )
 
