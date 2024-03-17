@@ -29,13 +29,20 @@ def open_file(filename: str, offset: int) -> csv.DictReader:
     return csv.DictReader(csvfile, dialect=dialect)
 
 
-def convert_string_to_float(s):
-    """Convert a numeric string to a float."""
-    numeric_string = "".join(char for char in s if char.isdigit() or char in "-,")
+def convert_german_to_american(number_string):
+    """Convert a number from German format to American format."""
+    # Entfernen der deutschen Tausendertrennzeichen
+    number_string = number_string.replace('.', '')
+    # Konvertieren des deutschen Dezimaltrennzeichens in das amerikanische
+    number_string = number_string.replace(',', '.')
 
-    numeric_string = numeric_string.replace(",", ".")
+    try:
+        # Konvertieren in float und Zurückgeben des Werts
+        return float(number_string)
+    except ValueError:
+        # Falls die Eingabe nicht in eine Zahl umgewandelt werden kann
+        return None
 
-    return float(numeric_string)
 
 
 def convert(filename: str, filetype: AccountType) -> None:
@@ -77,13 +84,14 @@ def convert(filename: str, filetype: AccountType) -> None:
                     }
                 )
             elif filetype == AccountType.GIROKONTO_NEU:
-                if convert_string_to_float(row["Betrag (€)"]) > 0:
+                value = convert_german_to_american(row["Betrag (€)"])
+                if value > 0:
                     writer.writerow(
                         {
                             "Date": row["Wertstellung"],
                             "Payee": row["Zahlungspflichtige*r"],
                             "Memo": row["Verwendungszweck"],
-                            "Amount": row["Betrag (€)"],
+                            "Amount": value,
                         }
                     )
                 else:
@@ -92,7 +100,7 @@ def convert(filename: str, filetype: AccountType) -> None:
                             "Date": row["Wertstellung"],
                             "Payee": row["Zahlungsempfänger*in"],
                             "Memo": row["Verwendungszweck"],
-                            "Amount": row["Betrag (€)"],
+                            "Amount": value,
                         }
                     )
 
