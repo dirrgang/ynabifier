@@ -10,7 +10,7 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "args": ["1015074436.csv", "girokonto"]
+            "args": ["Girokonto (Neu)", "29-07-2023_Umsatzliste_Girokonto_DE51120300001015074436.csv"]
         }
     ]
 }
