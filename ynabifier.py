@@ -65,15 +65,12 @@ def convert(filename: str, filetype: AccountType) -> None:
         writer.writeheader()
 
         for row in reader:
-            memo = row.get("Verwendungszweck", "")
-            if not (memo.startswith('"') and memo.endswith('"')):
-                memo = f'"{memo}"'
             if filetype == AccountType.GIROKONTO:
                 writer.writerow(
                     {
                         "Date": row["Wertstellung"],
                         "Payee": row["Auftraggeber / Begünstigter"],
-                        "Memo": memo,
+                        "Memo": row["Verwendungszweck"],
                         "Amount": row["Betrag (EUR)"],
                     }
                 )
@@ -82,7 +79,7 @@ def convert(filename: str, filetype: AccountType) -> None:
                     {
                         "Date": row["Wertstellung"],
                         "Payee": row["Beschreibung"],
-                        "Memo": memo,
+                        "Memo": row[""],
                         "Amount": row["Betrag (EUR)"],
                     }
                 )
@@ -93,7 +90,7 @@ def convert(filename: str, filetype: AccountType) -> None:
                         {
                             "Date": row["Wertstellung"],
                             "Payee": row["Zahlungspflichtige*r"],
-                            "Memo": memo,
+                            "Memo": row["Verwendungszweck"],
                             "Amount": value,
                         }
                     )
@@ -102,7 +99,7 @@ def convert(filename: str, filetype: AccountType) -> None:
                         {
                             "Date": row["Wertstellung"],
                             "Payee": row["Zahlungsempfänger*in"],
-                            "Memo": memo,
+                            "Memo": row["Verwendungszweck"],
                             "Amount": value,
                         }
                     )
