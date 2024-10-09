@@ -7,6 +7,7 @@ import argparse
 import csv
 import os
 import sys
+from datetime import datetime
 from enum import Enum
 
 
@@ -32,9 +33,9 @@ def open_file(filename: str, offset: int) -> csv.DictReader:
 def convert_german_to_american(number_string):
     """Convert a number from German format to American format."""
     # Entfernen der deutschen Tausendertrennzeichen
-    number_string = number_string.replace('.', '')
+    number_string = number_string.replace(".", "")
     # Konvertieren des deutschen Dezimaltrennzeichens in das amerikanische
-    number_string = number_string.replace(',', '.')
+    number_string = number_string.replace(",", ".")
 
     try:
         # Konvertieren in float und Zurückgeben des Werts
@@ -43,6 +44,14 @@ def convert_german_to_american(number_string):
         # Falls die Eingabe nicht in eine Zahl umgewandelt werden kann
         return None
 
+
+def convert_date_format(date_str: str) -> str:
+    """Convert date from DD.MM.YY to DD/MM/YY format."""
+    try:
+        date_obj = datetime.strptime(date_str, "%d.%m.%y")
+        return date_obj.strftime("%d/%m/%y")
+    except ValueError:
+        return date_str
 
 
 def convert(filename: str, filetype: AccountType) -> None:
@@ -61,14 +70,15 @@ def convert(filename: str, filetype: AccountType) -> None:
 
     with open(export_filename, mode="w", encoding="utf-8") as csvfile:
         fieldnames = ["Date", "Payee", "Memo", "Amount"]
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames, quoting=csv.QUOTE_ALL)
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
 
         for row in reader:
+            date = convert_date_format(row["Wertstellung"])
             if filetype == AccountType.GIROKONTO:
                 writer.writerow(
                     {
-                        "Date": row["Wertstellung"],
+                        "Date": date,
                         "Payee": row["Auftraggeber / Begünstigter"],
                         "Memo": row["Verwendungszweck"],
                         "Amount": row["Betrag (EUR)"],
@@ -77,7 +87,7 @@ def convert(filename: str, filetype: AccountType) -> None:
             elif filetype == AccountType.VISA:
                 writer.writerow(
                     {
-                        "Date": row["Wertstellung"],
+                        "Date": date,
                         "Payee": row["Beschreibung"],
                         "Memo": row[""],
                         "Amount": row["Betrag (EUR)"],
@@ -88,7 +98,7 @@ def convert(filename: str, filetype: AccountType) -> None:
                 if value > 0:
                     writer.writerow(
                         {
-                            "Date": row["Wertstellung"],
+                            "Date": date,
                             "Payee": row["Zahlungspflichtige*r"],
                             "Memo": row["Verwendungszweck"],
                             "Amount": value,
@@ -97,7 +107,7 @@ def convert(filename: str, filetype: AccountType) -> None:
                 else:
                     writer.writerow(
                         {
-                            "Date": row["Wertstellung"],
+                            "Date": date,
                             "Payee": row["Zahlungsempfänger*in"],
                             "Memo": row["Verwendungszweck"],
                             "Amount": value,
