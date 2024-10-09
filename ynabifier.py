@@ -61,7 +61,7 @@ def convert(filename: str, filetype: AccountType) -> None:
 
     with open(export_filename, mode="w", encoding="utf-8") as csvfile:
         fieldnames = ["Date", "Payee", "Memo", "Amount"]
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames, quoting=csv.QUOTE_ALL)
         writer.writeheader()
 
         for row in reader:
