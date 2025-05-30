@@ -14,7 +14,6 @@ from enum import Enum
 class AccountType(Enum):
     GIROKONTO = "Girokonto"
     VISA = "VISA"
-    GIROKONTO_NEU = "Girokonto (Neu)"
 
 
 def open_file(filename: str, offset: int) -> csv.DictReader:
@@ -57,9 +56,9 @@ def convert_date_format(date_str: str) -> str:
 def convert(filename: str, filetype: AccountType) -> None:
     """Convert the file given by filename according to the given type. Export to the same directory."""
 
-    if filetype == AccountType.GIROKONTO or filetype == AccountType.VISA:
+    if filetype == AccountType.VISA:
         reader = open_file(filename, 6)
-    elif filetype == AccountType.GIROKONTO_NEU:
+    elif filetype == AccountType.GIROKONTO:
         reader = open_file(filename, 4)
 
     basename_without_ext = os.path.splitext(
@@ -75,16 +74,7 @@ def convert(filename: str, filetype: AccountType) -> None:
 
         for row in reader:
             date = convert_date_format(row["Wertstellung"])
-            if filetype == AccountType.GIROKONTO:
-                writer.writerow(
-                    {
-                        "Date": date,
-                        "Payee": row["Auftraggeber / Begünstigter"],
-                        "Memo": row["Verwendungszweck"],
-                        "Amount": row["Betrag (EUR)"],
-                    }
-                )
-            elif filetype == AccountType.VISA:
+            if filetype == AccountType.VISA:
                 writer.writerow(
                     {
                         "Date": date,
@@ -93,7 +83,7 @@ def convert(filename: str, filetype: AccountType) -> None:
                         "Amount": row["Betrag (EUR)"],
                     }
                 )
-            elif filetype == AccountType.GIROKONTO_NEU:
+            elif filetype == AccountType.GIROKONTO:
                 value = convert_german_to_american(row["Betrag (€)"])
                 if value > 0:
                     writer.writerow(
