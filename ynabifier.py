@@ -85,7 +85,7 @@ def convert(filename: str, filetype: AccountType) -> None:
                 )
             elif filetype == AccountType.GIROKONTO:
                 value = convert_german_to_american(row["Betrag (€)"])
-                if value > 0:
+                if value is not None and value > 0:
                     writer.writerow(
                         {
                             "Date": date,
@@ -94,7 +94,7 @@ def convert(filename: str, filetype: AccountType) -> None:
                             "Amount": value,
                         }
                     )
-                else:
+                elif value is not None:
                     writer.writerow(
                         {
                             "Date": date,
