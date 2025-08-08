@@ -6,6 +6,7 @@ Module Docstring.
 import argparse
 import csv
 import os
+import re
 import sys
 from datetime import datetime
 from enum import Enum
@@ -53,6 +54,19 @@ def convert_date_format(date_str: str) -> str:
         return date_str
 
 
+def extract_paypal_store(memo: str) -> str:
+    """
+    Extract the store name from a PayPal memo string.
+    Looks for 'Ihr Einkauf bei <store>'.
+    """
+    if not memo:
+        return ""
+    match = re.search(r"Ihr Einkauf bei\s+(.+?)(?:,|$)", memo)
+    if match:
+        return match.group(1).strip()
+    return ""
+
+
 def convert(filename: str, filetype: AccountType) -> None:
     """Convert the file given by filename according to the given type. Export to the same directory."""
 
@@ -75,31 +89,52 @@ def convert(filename: str, filetype: AccountType) -> None:
         for row in reader:
             date = convert_date_format(row["Wertstellung"])
             if filetype == AccountType.VISA:
+                payee = row["Beschreibung"]
+                memo = row[""]
+                # Check for PayPal transactions
+                if payee.strip().startswith("PayPal Europe S.a.r.l."):
+                    store = extract_paypal_store(memo)
+                    if store:
+                        payee = store
                 writer.writerow(
                     {
                         "Date": date,
-                        "Payee": row["Beschreibung"],
-                        "Memo": row[""],
+                        "Payee": payee,
+                        "Memo": memo,
                         "Amount": row["Betrag (EUR)"],
                     }
                 )
             elif filetype == AccountType.GIROKONTO:
                 value = convert_german_to_american(row["Betrag (€)"])
                 if value is not None and value > 0:
+                    payee = row["Zahlungspflichtige*r"]
+                    memo = row["Verwendungszweck"]
+                    # Check for PayPal transactions
+                    if payee.strip().startswith("PayPal Europe S.a.r.l."):
+                        store = extract_paypal_store(memo)
+                        if store:
+                            payee = store
                     writer.writerow(
                         {
                             "Date": date,
-                            "Payee": row["Zahlungspflichtige*r"],
-                            "Memo": row["Verwendungszweck"],
+                            "Payee": payee,
+                            "Memo": memo,
                             "Amount": value,
                         }
                     )
                 elif value is not None:
+                    payee = row["Zahlungsempfänger*in"]
+                    memo = row["Verwendungszweck"]
+                    # Check for PayPal transactions
+                    if payee.strip().startswith("PayPal Europe S.a.r.l."):
+                        store = extract_paypal_store(memo)
+                        if store:
+                            payee = store
                     writer.writerow(
                         {
                             "Date": date,
-                            "Payee": row["Zahlungsempfänger*in"],
-                            "Memo": row["Verwendungszweck"],
+                            "Payee": payee,
+                            "Memo": memo,
                             "Amount": value,
                         }
                     )
