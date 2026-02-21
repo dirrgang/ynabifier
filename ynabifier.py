@@ -196,7 +196,7 @@ def convert(filename: str, filetype: AccountType, output: Optional[Path] = None)
     ) as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=YNAB_FIELDNAMES)
         writer.writeheader()
-        validate_columns(reader.fieldnames, get_required_columns(filetype))
+        validate_columns(list(reader.fieldnames) if reader.fieldnames else None, get_required_columns(filetype))
 
         for row in reader:
             date = convert_date_format(row.get("Wertstellung", "").strip())
@@ -236,7 +236,7 @@ def preview(filename: str, filetype: AccountType, limit: int = DEFAULT_DRY_RUN_L
         raise ValueError(f"Unsupported account type: {filetype}")
 
     with open_csv_reader(filename, offset) as reader:
-        validate_columns(reader.fieldnames, get_required_columns(filetype))
+        validate_columns(list(reader.fieldnames) if reader.fieldnames else None, get_required_columns(filetype))
         writer = csv.DictWriter(sys.stdout, fieldnames=YNAB_FIELDNAMES)
         writer.writeheader()
         for index, row in enumerate(reader, start=1):
