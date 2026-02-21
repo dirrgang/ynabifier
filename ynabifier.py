@@ -175,7 +175,9 @@ def get_required_columns(filetype: AccountType) -> list[str]:
     raise ValueError(f"Unsupported account type: {filetype}")
 
 
-def convert(filename: str, filetype: AccountType, output: Optional[Path] = None) -> Path:
+def convert(
+    filename: str, filetype: AccountType, output: Optional[Path] = None
+) -> Path:
     """Convert the file given by filename according to the given type. Export to the same directory."""
     if filetype == AccountType.VISA:
         offset = 6
@@ -196,7 +198,10 @@ def convert(filename: str, filetype: AccountType, output: Optional[Path] = None)
     ) as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=YNAB_FIELDNAMES)
         writer.writeheader()
-        validate_columns(list(reader.fieldnames) if reader.fieldnames else None, get_required_columns(filetype))
+        validate_columns(
+            list(reader.fieldnames) if reader.fieldnames else None,
+            get_required_columns(filetype),
+        )
 
         for row in reader:
             date = convert_date_format(row.get("Wertstellung", "").strip())
@@ -226,7 +231,9 @@ def convert(filename: str, filetype: AccountType, output: Optional[Path] = None)
     return export_path
 
 
-def preview(filename: str, filetype: AccountType, limit: int = DEFAULT_DRY_RUN_LIMIT) -> None:
+def preview(
+    filename: str, filetype: AccountType, limit: int = DEFAULT_DRY_RUN_LIMIT
+) -> None:
     """Write a preview of the converted rows to stdout."""
     if filetype == AccountType.VISA:
         offset = 6
@@ -236,7 +243,10 @@ def preview(filename: str, filetype: AccountType, limit: int = DEFAULT_DRY_RUN_L
         raise ValueError(f"Unsupported account type: {filetype}")
 
     with open_csv_reader(filename, offset) as reader:
-        validate_columns(list(reader.fieldnames) if reader.fieldnames else None, get_required_columns(filetype))
+        validate_columns(
+            list(reader.fieldnames) if reader.fieldnames else None,
+            get_required_columns(filetype),
+        )
         writer = csv.DictWriter(sys.stdout, fieldnames=YNAB_FIELDNAMES)
         writer.writeheader()
         for index, row in enumerate(reader, start=1):
