@@ -53,6 +53,12 @@ python ynabifier.py <input-file.csv> --since 2026-06-01
 
 Supported `--since` formats are `YYYY-MM-DD`, `DD.MM.YYYY`, and `DD.MM.YY`.
 
+By default, ynabifier uses DKB's `Buchungsdatum` as the YNAB transaction date. To use `Wertstellung` instead:
+
+```bash
+python ynabifier.py <input-file.csv> --date-field Wertstellung
+```
+
 Preview the converted CSV without writing a file:
 
 ```bash

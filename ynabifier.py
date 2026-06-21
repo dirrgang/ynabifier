@@ -19,6 +19,11 @@ class AccountType(Enum):
     VISA = "VISA"
 
 
+class DateField(Enum):
+    BUCHUNGSDATUM = "Buchungsdatum"
+    WERTSTELLUNG = "Wertstellung"
+
+
 YNAB_FIELDNAMES = ["Date", "Payee", "Category", "Memo", "Outflow", "Inflow"]
 PAYPAL_PREFIX = "PayPal"
 PAYPAL_REFERENCE_PATTERN = re.compile(r"^(?P<reference>[A-Z]*\d+)")
@@ -265,10 +270,12 @@ def build_row(date: str, payee: str, memo: str, amount: float) -> Dict[str, obje
 
 
 def build_ynab_row(
-    source_row: Dict[str, str], filetype: AccountType
+    source_row: Dict[str, str],
+    filetype: AccountType,
+    date_field: DateField = DateField.BUCHUNGSDATUM,
 ) -> Optional[Dict[str, object]]:
     """Build a YNAB row from a DKB source row, or skip invalid amount rows."""
-    date_value = convert_date_format(source_row.get("Wertstellung", "").strip())
+    date_value = convert_date_format(source_row.get(date_field.value, "").strip())
 
     if filetype == AccountType.VISA:
         payee = normalize_text(source_row.get("Beschreibung", ""))
@@ -296,11 +303,15 @@ def build_ynab_row(
     raise ValueError(f"Unsupported account type: {filetype}")
 
 
-def should_include_row(source_row: Dict[str, str], since: Optional[date]) -> bool:
+def should_include_row(
+    source_row: Dict[str, str],
+    since: Optional[date],
+    date_field: DateField = DateField.BUCHUNGSDATUM,
+) -> bool:
     """Return whether a source row should be included after date filtering."""
     if since is None:
         return True
-    transaction_date = parse_dkb_date(source_row.get("Wertstellung", "").strip())
+    transaction_date = parse_dkb_date(source_row.get(date_field.value, "").strip())
     return bool(transaction_date and transaction_date >= since)
 
 
@@ -371,6 +382,7 @@ def convert_with_summary(
     output: Optional[Path] = None,
     output_dir: Optional[Path] = None,
     since: Optional[date] = None,
+    date_field: DateField = DateField.BUCHUNGSDATUM,
 ) -> ConversionResult:
     """Convert the file given by filename and return a summary."""
     offset = get_account_offset(filetype)
@@ -391,11 +403,11 @@ def convert_with_summary(
         )
 
         for row in reader:
-            if not should_include_row(row, since):
+            if not should_include_row(row, since, date_field=date_field):
                 rows_skipped += 1
                 continue
 
-            output_row = build_ynab_row(row, filetype)
+            output_row = build_ynab_row(row, filetype, date_field=date_field)
             if output_row is None:
                 rows_skipped += 1
                 continue
@@ -419,6 +431,7 @@ def preview(
     filetype: AccountType,
     limit: int = DEFAULT_DRY_RUN_LIMIT,
     since: Optional[date] = None,
+    date_field: DateField = DateField.BUCHUNGSDATUM,
 ) -> ConversionResult:
     """Write a preview of the converted rows to stdout."""
     offset = get_account_offset(filetype)
@@ -433,11 +446,11 @@ def preview(
         writer = csv.DictWriter(sys.stdout, fieldnames=YNAB_FIELDNAMES)
         writer.writeheader()
         for row in reader:
-            if not should_include_row(row, since):
+            if not should_include_row(row, since, date_field=date_field):
                 rows_skipped += 1
                 continue
 
-            output_row = build_ynab_row(row, filetype)
+            output_row = build_ynab_row(row, filetype, date_field=date_field)
             if output_row is None:
                 rows_skipped += 1
                 continue
@@ -487,6 +500,13 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--date-field",
+        type=DateField,
+        choices=list(DateField),
+        default=DateField.BUCHUNGSDATUM,
+        help="DKB date column to use for YNAB dates and --since filtering.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print a preview to stdout instead of writing a file.",
@@ -529,7 +549,13 @@ def main() -> None:
                 raise ValueError(
                     "--output and --output-dir cannot be used with --dry-run."
                 )
-            result = preview(str(input_file), filetype, args.limit, since=since)
+            result = preview(
+                str(input_file),
+                filetype,
+                args.limit,
+                since=since,
+                date_field=args.date_field,
+            )
             print(
                 f"Preview rows: {result.rows_written}; rows skipped: {result.rows_skipped}",
                 file=sys.stderr,
@@ -544,11 +570,13 @@ def main() -> None:
             output=output,
             output_dir=output_dir,
             since=since,
+            date_field=args.date_field,
         )
         print(f"Exported: {result.export_path}")
         print(f"Rows written: {result.rows_written}")
         print(f"Rows skipped: {result.rows_skipped}")
         print(f"Account type: {filetype.value}")
+        print(f"Date field: {args.date_field.value}")
 
     except FileNotFoundError as err:
         print(f"{sys.argv[0]}: {args.file}: {err.strerror}", file=sys.stderr)

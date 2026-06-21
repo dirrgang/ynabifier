@@ -6,6 +6,7 @@ from tempfile import TemporaryDirectory
 
 from ynabifier import (
     AccountType,
+    DateField,
     build_ynab_row,
     build_row,
     clean_dkb_party,
@@ -124,7 +125,8 @@ class TestYnabifierHelpers(unittest.TestCase):
     def test_build_ynab_row_strips_girokonto_payee_address(self) -> None:
         row = build_ynab_row(
             {
-                "Wertstellung": "19.02.26",
+                "Buchungsdatum": "19.02.26",
+                "Wertstellung": "20.02.26",
                 "Zahlungspflichtige*r": (
                     "Example Marketplace S.a.r.l.                                         "
                     "Example Street 1"
@@ -137,7 +139,25 @@ class TestYnabifierHelpers(unittest.TestCase):
         )
 
         self.assertIsNotNone(row)
+        self.assertEqual(row["Date"], "19/02/26")
         self.assertEqual(row["Payee"], "Example Marketplace S.a.r.l.")
+
+    def test_build_ynab_row_can_use_wertstellung_date(self) -> None:
+        row = build_ynab_row(
+            {
+                "Buchungsdatum": "19.02.26",
+                "Wertstellung": "20.02.26",
+                "Zahlungspflichtige*r": "Example Account Holder",
+                "Zahlungsempfänger*in": "Example Store GmbH",
+                "Verwendungszweck": "Invoice 123",
+                "Betrag (€)": "-12,34",
+            },
+            AccountType.GIROKONTO,
+            date_field=DateField.WERTSTELLUNG,
+        )
+
+        self.assertIsNotNone(row)
+        self.assertEqual(row["Date"], "20/02/26")
 
     def test_resolve_input_file_picks_latest_matching_export(self) -> None:
         with TemporaryDirectory() as tmpdir:
@@ -200,10 +220,21 @@ class TestYnabifierHelpers(unittest.TestCase):
     def test_should_include_row_filters_by_since_date(self) -> None:
         since = date(2026, 6, 21)
 
-        self.assertTrue(should_include_row({"Wertstellung": "21.06.2026"}, since))
-        self.assertTrue(should_include_row({"Wertstellung": "22.06.2026"}, since))
-        self.assertFalse(should_include_row({"Wertstellung": "20.06.2026"}, since))
-        self.assertFalse(should_include_row({"Wertstellung": "not a date"}, since))
+        self.assertTrue(should_include_row({"Buchungsdatum": "21.06.2026"}, since))
+        self.assertTrue(should_include_row({"Buchungsdatum": "22.06.2026"}, since))
+        self.assertFalse(should_include_row({"Buchungsdatum": "20.06.2026"}, since))
+        self.assertFalse(should_include_row({"Buchungsdatum": "not a date"}, since))
+
+    def test_should_include_row_can_use_wertstellung_date(self) -> None:
+        since = date(2026, 6, 21)
+
+        self.assertTrue(
+            should_include_row(
+                {"Buchungsdatum": "20.06.2026", "Wertstellung": "21.06.2026"},
+                since,
+                date_field=DateField.WERTSTELLUNG,
+            )
+        )
 
     def test_resolve_output_path_uses_output_dir(self) -> None:
         with TemporaryDirectory() as tmpdir:
