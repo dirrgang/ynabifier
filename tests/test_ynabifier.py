@@ -4,11 +4,15 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from ynabifier import (
+    AccountType,
+    build_ynab_row,
     build_row,
+    clean_dkb_party,
     convert_date_format,
     convert_german_to_american,
     extract_paypal_store,
     normalize_text,
+    normalize_transaction_details,
     parse_since_date,
     resolve_input_file,
     resolve_output_path,
@@ -30,11 +34,48 @@ class TestYnabifierHelpers(unittest.TestCase):
     def test_extract_paypal_store(self) -> None:
         memo = "foo, Ihr Einkauf bei Store Name, bar"
         self.assertEqual(extract_paypal_store(memo), "Store Name")
+        refund_memo = "foo, Ihr Einkauf bei Store Name/ABBUCHUNG VOM PAYPAL-KONTO"
+        self.assertEqual(extract_paypal_store(refund_memo), "Store Name")
+        self.assertEqual(
+            extract_paypal_store("foo, Ihr Einkauf bei Alza.cz a.s."),
+            "Alza.cz a.s.",
+        )
         self.assertEqual(extract_paypal_store(""), "")
 
     def test_normalize_text(self) -> None:
         self.assertEqual(normalize_text("Hello   World"), "Hello World")
         self.assertEqual(normalize_text("  A  B  "), "A B")
+
+    def test_clean_dkb_party_strips_padded_address(self) -> None:
+        self.assertEqual(
+            clean_dkb_party(
+                "eBay S.a.r.l.                                                         "
+                "22-24, Boulevard Royal"
+            ),
+            "eBay S.a.r.l.",
+        )
+
+    def test_normalize_transaction_details_for_paypal_purchase(self) -> None:
+        payee, memo = normalize_transaction_details(
+            "PayPal Europe S.a.r.l. et Cie S.C.A",
+            "1048330207269/PP.5621.PP/. bc GmbH, Ihr Einkauf bei bc GmbH",
+            -24.98,
+        )
+
+        self.assertEqual(payee, "bc GmbH")
+        self.assertEqual(memo, "PayPal purchase, reference 1048330207269")
+
+    def test_normalize_transaction_details_for_paypal_refund(self) -> None:
+        payee, memo = normalize_transaction_details(
+            "PayPal Europe S.a.r.l. et Cie S.C.A",
+            ". IKEA Deutschland GmbH . Co. KG, Ihr Einkauf bei "
+            "IKEA Deutschland GmbH . Co. KG/ABBUCHUNG VOM PAYPAL-KONTO "
+            "AWV-MELDEPFLICHT BEACHTEN HOTLINE BUNDESBANK (0800) 1234-111",
+            158.69,
+        )
+
+        self.assertEqual(payee, "IKEA Deutschland GmbH . Co. KG")
+        self.assertEqual(memo, "PayPal refund/credit")
 
     def test_build_row(self) -> None:
         row = build_row("19/02/26", "Payee", "Memo", -12.5)
@@ -43,6 +84,24 @@ class TestYnabifierHelpers(unittest.TestCase):
         row = build_row("19/02/26", "Payee", "Memo", 12.5)
         self.assertEqual(row["Outflow"], "")
         self.assertEqual(row["Inflow"], "12.50")
+
+    def test_build_ynab_row_strips_girokonto_payee_address(self) -> None:
+        row = build_ynab_row(
+            {
+                "Wertstellung": "19.02.26",
+                "Zahlungspflichtige*r": (
+                    "eBay S.a.r.l.                                                         "
+                    "22-24, Boulevard Royal"
+                ),
+                "Zahlungsempfänger*in": "Dennis Irrgang",
+                "Verwendungszweck": "P.7354160884",
+                "Betrag (€)": "61,81",
+            },
+            AccountType.GIROKONTO,
+        )
+
+        self.assertIsNotNone(row)
+        self.assertEqual(row["Payee"], "eBay S.a.r.l.")
 
     def test_resolve_input_file_picks_latest_matching_export(self) -> None:
         with TemporaryDirectory() as tmpdir:

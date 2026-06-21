@@ -21,6 +21,7 @@ class AccountType(Enum):
 
 YNAB_FIELDNAMES = ["Date", "Payee", "Category", "Memo", "Outflow", "Inflow"]
 PAYPAL_PREFIX = "PayPal Europe S.a.r.l."
+PAYPAL_REFERENCE_PATTERN = re.compile(r"^(?P<reference>[A-Z]*\d+)")
 DEFAULT_EXPORT_SUFFIX = "-ynab.csv"
 DEFAULT_DRY_RUN_LIMIT = 10
 DKB_EXPORT_FILENAME_PATTERN = re.compile(
@@ -166,9 +167,9 @@ def extract_paypal_store(memo: str) -> str:
     """
     if not memo:
         return ""
-    match = re.search(r"Ihr Einkauf bei\s+(.+?)(?:,|$)", memo)
+    match = re.search(r"Ihr Einkauf bei\s+(.+?)(?:/|,|$)", memo)
     if match:
-        return match.group(1).strip()
+        return match.group(1).strip().removeprefix(".").strip()
     return ""
 
 
@@ -177,13 +178,51 @@ def normalize_text(value: str) -> str:
     return " ".join(value.split())
 
 
-def normalize_payee(payee: str, memo: str) -> str:
-    """Normalize PayPal payees to the store name if available."""
-    if payee.strip().startswith(PAYPAL_PREFIX):
+def clean_dkb_party(value: str) -> str:
+    """Remove DKB's padded address suffix from party fields when present."""
+    return normalize_text(re.split(r"\s{2,}", value.strip(), maxsplit=1)[0])
+
+
+def is_paypal_transaction(payee: str, memo: str) -> bool:
+    """Return whether a row looks like a PayPal transaction."""
+    normalized_payee = payee.strip()
+    return (
+        normalized_payee.startswith(PAYPAL_PREFIX)
+        or "PAYPAL-KONTO" in memo.upper()
+        or "PP.5621.PP" in memo
+    )
+
+
+def extract_paypal_reference(memo: str) -> str:
+    """Extract the PayPal reference from a memo when DKB includes one."""
+    match = PAYPAL_REFERENCE_PATTERN.match(memo.strip())
+    return match.group("reference") if match else ""
+
+
+def clean_paypal_memo(memo: str, amount: float) -> str:
+    """Replace noisy PayPal boilerplate with a concise memo."""
+    reference = extract_paypal_reference(memo)
+    transaction_kind = "refund/credit" if amount > 0 else "purchase"
+    cleaned = f"PayPal {transaction_kind}"
+    if reference:
+        cleaned = f"{cleaned}, reference {reference}"
+    return cleaned
+
+
+def normalize_transaction_details(
+    payee: str, memo: str, amount: float
+) -> tuple[str, str]:
+    """Normalize payee and memo text for YNAB import."""
+    payee = clean_dkb_party(payee)
+    memo = normalize_text(memo)
+
+    if is_paypal_transaction(payee, memo):
         store = extract_paypal_store(memo)
         if store:
-            return store
-    return payee
+            payee = store
+        memo = clean_paypal_memo(memo, amount)
+
+    return normalize_text(payee), normalize_text(memo)
 
 
 def parse_amount(amount: str) -> Optional[float]:
@@ -230,7 +269,7 @@ def build_ynab_row(
         amount = parse_amount(source_row.get("Betrag (EUR)", ""))
         if amount is None:
             return None
-        payee = normalize_text(normalize_payee(payee, memo))
+        payee, memo = normalize_transaction_details(payee, memo, amount)
         return build_row(date_value, payee, memo, amount)
 
     if filetype == AccountType.GIROKONTO:
@@ -242,9 +281,7 @@ def build_ynab_row(
         else:
             payee = source_row.get("Zahlungsempfänger*in", "")
         memo = source_row.get("Verwendungszweck", "")
-        payee = normalize_text(payee)
-        memo = normalize_text(memo)
-        payee = normalize_text(normalize_payee(payee, memo))
+        payee, memo = normalize_transaction_details(payee, memo, amount)
         return build_row(date_value, payee, memo, amount)
 
     raise ValueError(f"Unsupported account type: {filetype}")
