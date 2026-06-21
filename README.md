@@ -69,6 +69,12 @@ Preview the converted CSV without writing a file:
 dkb-to-ynab4 --dry-run <input-file.csv>
 ```
 
+When running directly from a source checkout without installing, use:
+
+```bash
+python dkb_to_ynab4.py <input-file.csv>
+```
+
 ## Development
 Run the test suite with:
 

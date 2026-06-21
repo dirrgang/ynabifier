@@ -4,7 +4,7 @@ from datetime import date
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from ynabifier import (
+from dkb_to_ynab4 import (
     AccountType,
     DateField,
     build_ynab_row,
@@ -23,7 +23,7 @@ from ynabifier import (
 )
 
 
-class TestYnabifierHelpers(unittest.TestCase):
+class TestDkbToYnab4Helpers(unittest.TestCase):
     def test_convert_german_to_american(self) -> None:
         self.assertEqual(convert_german_to_american("1.234,56"), 1234.56)
         self.assertEqual(convert_german_to_american("-0,5"), -0.5)

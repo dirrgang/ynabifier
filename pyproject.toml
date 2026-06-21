@@ -22,8 +22,8 @@ classifiers = [
 dependencies = []
 
 [project.scripts]
-dkb-to-ynab4 = "ynabifier:main"
+dkb-to-ynab4 = "dkb_to_ynab4:main"
 ynabifier = "ynabifier:main"
 
 [tool.setuptools]
-py-modules = ["ynabifier"]
+py-modules = ["dkb_to_ynab4", "ynabifier"]
