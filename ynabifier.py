@@ -348,6 +348,14 @@ def resolve_output_path(
     return get_default_export_path(source_path)
 
 
+def format_permission_error(err: PermissionError) -> str:
+    """Return a helpful message for permission errors."""
+    path = err.filename or ""
+    if path:
+        return f"{path}: permission denied. Close the file if it is open and try again."
+    return "Permission denied. Close the file if it is open and try again."
+
+
 def get_account_offset(filetype: AccountType) -> int:
     """Return the number of pre-header rows for the account type."""
     if filetype == AccountType.VISA:
@@ -547,6 +555,9 @@ def main() -> None:
         raise SystemExit(1) from err
     except IsADirectoryError as err:
         print(f"{sys.argv[0]}: {args.file}: {err.strerror}", file=sys.stderr)
+        raise SystemExit(1) from err
+    except PermissionError as err:
+        print(f"{sys.argv[0]}: {format_permission_error(err)}", file=sys.stderr)
         raise SystemExit(1) from err
     except ValueError as err:
         print(f"{sys.argv[0]}: {err}", file=sys.stderr)

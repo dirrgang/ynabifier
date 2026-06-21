@@ -12,6 +12,7 @@ from ynabifier import (
     convert_date_format,
     convert_german_to_american,
     extract_paypal_store,
+    format_permission_error,
     normalize_text,
     normalize_transaction_details,
     parse_since_date,
@@ -224,6 +225,15 @@ class TestYnabifierHelpers(unittest.TestCase):
                 output=Path("out.csv"),
                 output_dir=Path("exports"),
             )
+
+    def test_format_permission_error_mentions_open_file(self) -> None:
+        err = PermissionError(13, "Permission denied", "statement-ynab.csv")
+
+        self.assertEqual(
+            format_permission_error(err),
+            "statement-ynab.csv: permission denied. "
+            "Close the file if it is open and try again.",
+        )
 
 
 if __name__ == "__main__":
