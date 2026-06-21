@@ -97,7 +97,7 @@ def resolve_input_file(path: str, latest: bool = False) -> Path:
             "Use --latest to select the newest DKB export automatically."
         )
 
-    candidates: list[tuple[datetime, Path]] = []
+    candidates: list[tuple[datetime, float, Path]] = []
     for child in input_path.iterdir():
         if not child.is_file():
             continue
@@ -108,14 +108,14 @@ def resolve_input_file(path: str, latest: bool = False) -> Path:
             export_date = datetime.strptime(match.group("date"), "%d-%m-%Y")
         except ValueError:
             continue
-        candidates.append((export_date, child))
+        candidates.append((export_date, child.stat().st_mtime, child))
 
     if not candidates:
         raise ValueError(
             f"No DKB export files matching the expected naming scheme found in {input_path}."
         )
 
-    return max(candidates, key=lambda item: (item[0], item[1].name))[1]
+    return max(candidates, key=lambda item: (item[0], item[1], item[2].name))[2]
 
 
 def convert_german_to_american(number_string: str) -> Optional[float]:

@@ -1,4 +1,5 @@
 import unittest
+import os
 from datetime import date
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -116,6 +117,24 @@ class TestYnabifierHelpers(unittest.TestCase):
                 path.write_text("", encoding="utf-8")
 
             self.assertEqual(resolve_input_file(str(directory), latest=True), latest)
+
+    def test_resolve_input_file_uses_mtime_for_same_date_exports(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            directory = Path(tmpdir)
+            original = (
+                directory
+                / "21-06-2026_Umsatzliste_Girokonto_DE51120300001015074436.csv"
+            )
+            duplicate = (
+                directory
+                / "21-06-2026_Umsatzliste_Girokonto_DE51120300001015074436 (1).csv"
+            )
+            original.write_text("", encoding="utf-8")
+            duplicate.write_text("", encoding="utf-8")
+            os.utime(original, (1000, 1000))
+            os.utime(duplicate, (2000, 2000))
+
+            self.assertEqual(resolve_input_file(str(directory), latest=True), duplicate)
 
     def test_resolve_input_file_requires_matching_export_in_directory(self) -> None:
         with TemporaryDirectory() as tmpdir:
