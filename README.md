@@ -1,14 +1,16 @@
-# ynabifier
+# dkb-to-ynab4
 
 ## Description
-ynabifier is a Python utility for converting DKB AG bank statement CSVs into YNAB-compatible CSV files. It supports DKB Girokonto and VISA exports. The script converts German number and date formats and restructures the data for import into YNAB.
+dkb-to-ynab4 is a small offline utility for converting DKB AG bank statement CSVs into legacy YNAB4-compatible CSV files. It supports DKB Girokonto and VISA exports, cleans up common DKB/PayPal memo formats, and converts German number and date formats for import into YNAB4.
+
+If you need a general multi-bank converter or YNAB API import for modern web YNAB, consider [bank2ynab](https://github.com/bank2ynab/bank2ynab). This project intentionally focuses on DKB exports and the legacy YNAB4 desktop import workflow.
 
 ## Installation
 Clone the repository and install dependencies:
 
 ```bash
-git clone https://github.com/dirrgang/ynabifier.git
-cd ynabifier
+git clone https://github.com/dirrgang/dkb-to-ynab4.git
+cd dkb-to-ynab4
 pip install -r requirements.txt
 ```
 
@@ -16,53 +18,55 @@ You can also install it as a local command:
 
 ```bash
 pip install .
-ynabifier <input-file.csv>
+dkb-to-ynab4 <input-file.csv>
 ```
 
+The older `ynabifier` command is still installed as a compatibility alias.
+
 ## Usage
-Run `ynabifier.py` with the file path. The account type is autodetected from the CSV header:
+Run `dkb-to-ynab4` with the file path. The account type is autodetected from the CSV header:
 
 ```bash
-python ynabifier.py <input-file.csv>
+dkb-to-ynab4 <input-file.csv>
 ```
 
 You can also pass the account type explicitly:
 
 ```bash
-python ynabifier.py Girokonto <input-file.csv>
-python ynabifier.py VISA <input-file.csv>
+dkb-to-ynab4 Girokonto <input-file.csv>
+dkb-to-ynab4 VISA <input-file.csv>
 ```
 
 To convert the newest matching DKB export in a directory, use `--latest`:
 
 ```bash
-python ynabifier.py --latest ~/Downloads
+dkb-to-ynab4 --latest ~/Downloads
 ```
 
 The output file will be saved in the same directory with `-ynab.csv` appended to the original filename. To choose a different output directory:
 
 ```bash
-python ynabifier.py --latest ~/Downloads --output-dir ~/YNAB/imports
+dkb-to-ynab4 --latest ~/Downloads --output-dir ~/YNAB/imports
 ```
 
 To export only rows on or after a given date:
 
 ```bash
-python ynabifier.py <input-file.csv> --since 2026-06-01
+dkb-to-ynab4 <input-file.csv> --since 2026-06-01
 ```
 
 Supported `--since` formats are `YYYY-MM-DD`, `DD.MM.YYYY`, and `DD.MM.YY`.
 
-By default, ynabifier uses DKB's `Buchungsdatum` as the YNAB transaction date. To use `Wertstellung` instead:
+By default, dkb-to-ynab4 uses DKB's `Buchungsdatum` as the YNAB transaction date. To use `Wertstellung` instead:
 
 ```bash
-python ynabifier.py <input-file.csv> --date-field Wertstellung
+dkb-to-ynab4 <input-file.csv> --date-field Wertstellung
 ```
 
 Preview the converted CSV without writing a file:
 
 ```bash
-python ynabifier.py --dry-run <input-file.csv>
+dkb-to-ynab4 --dry-run <input-file.csv>
 ```
 
 ## Development

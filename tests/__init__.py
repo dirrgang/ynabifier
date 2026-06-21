@@ -1,1 +1,1 @@
-"""Test package for ynabifier."""
+"""Test package for dkb-to-ynab4."""
