@@ -1,7 +1,7 @@
 # ynabifier
 
 ## Description
-ynabifier is a Python utility for converting DKB AG bank statement CSVs into YNAB4 compatible CSV files. It supports different account types, including "Girokonto," "VISA," and "Girokonto (Neu)." The script processes the input CSV file, converting numeric formats from German to American standards and restructuring the data to fit YNAB4 requirements.
+ynabifier is a Python utility for converting DKB AG bank statement CSVs into YNAB-compatible CSV files. It supports DKB Girokonto and VISA exports. The script converts German number and date formats and restructures the data for import into YNAB.
 
 ## Installation
 Clone the repository and install dependencies:
@@ -12,8 +12,15 @@ cd ynabifier
 pip install -r requirements.txt
 ```
 
+You can also install it as a local command:
+
+```bash
+pip install .
+ynabifier <input-file.csv>
+```
+
 ## Usage
-Run `ynabifier.py` with the file path. The account type is autodetected:
+Run `ynabifier.py` with the file path. The account type is autodetected from the CSV header:
 
 ```bash
 python ynabifier.py <input-file.csv>
@@ -32,7 +39,32 @@ To convert the newest matching DKB export in a directory, use `--latest`:
 python ynabifier.py --latest ~/Downloads
 ```
 
-The output file will be saved in the same directory with `-ynab.csv` appended to the original filename.
+The output file will be saved in the same directory with `-ynab.csv` appended to the original filename. To choose a different output directory:
+
+```bash
+python ynabifier.py --latest ~/Downloads --output-dir ~/YNAB/imports
+```
+
+To export only rows on or after a given date:
+
+```bash
+python ynabifier.py <input-file.csv> --since 2026-06-01
+```
+
+Supported `--since` formats are `YYYY-MM-DD`, `DD.MM.YYYY`, and `DD.MM.YY`.
+
+Preview the converted CSV without writing a file:
+
+```bash
+python ynabifier.py --dry-run <input-file.csv>
+```
+
+## Development
+Run the test suite with:
+
+```bash
+python -m unittest discover -s tests -p "test_*.py"
+```
 
 ## License
 GPL-3.0 License - see LICENSE file.

@@ -1,4 +1,5 @@
 import unittest
+from datetime import date
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -8,7 +9,10 @@ from ynabifier import (
     convert_german_to_american,
     extract_paypal_store,
     normalize_text,
+    parse_since_date,
     resolve_input_file,
+    resolve_output_path,
+    should_include_row,
 )
 
 
@@ -70,6 +74,44 @@ class TestYnabifierHelpers(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "Use --latest"):
                 resolve_input_file(str(directory))
+
+    def test_parse_since_date_accepts_supported_formats(self) -> None:
+        self.assertEqual(parse_since_date("2026-06-21"), date(2026, 6, 21))
+        self.assertEqual(parse_since_date("21.06.2026"), date(2026, 6, 21))
+        self.assertEqual(parse_since_date("21.06.26"), date(2026, 6, 21))
+
+    def test_parse_since_date_rejects_invalid_format(self) -> None:
+        with self.assertRaisesRegex(ValueError, "Invalid --since date"):
+            parse_since_date("06/21/2026")
+
+    def test_should_include_row_filters_by_since_date(self) -> None:
+        since = date(2026, 6, 21)
+
+        self.assertTrue(should_include_row({"Wertstellung": "21.06.2026"}, since))
+        self.assertTrue(should_include_row({"Wertstellung": "22.06.2026"}, since))
+        self.assertFalse(should_include_row({"Wertstellung": "20.06.2026"}, since))
+        self.assertFalse(should_include_row({"Wertstellung": "not a date"}, since))
+
+    def test_resolve_output_path_uses_output_dir(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            directory = Path(tmpdir)
+            source = directory / "21-06-2026_Umsatzliste_Girokonto_DE51120300001015074436.csv"
+            output_dir = directory / "ynab"
+
+            self.assertEqual(
+                resolve_output_path(source, output_dir=output_dir),
+                output_dir.resolve()
+                / "21-06-2026_Umsatzliste_Girokonto_DE51120300001015074436-ynab.csv",
+            )
+            self.assertTrue(output_dir.exists())
+
+    def test_resolve_output_path_rejects_output_and_output_dir(self) -> None:
+        with self.assertRaisesRegex(ValueError, "either --output or --output-dir"):
+            resolve_output_path(
+                Path("statement.csv"),
+                output=Path("out.csv"),
+                output_dir=Path("exports"),
+            )
 
 
 if __name__ == "__main__":

@@ -7,7 +7,8 @@ import logging
 import re
 import sys
 from contextlib import contextmanager
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import date, datetime
 from enum import Enum
 from pathlib import Path
 from typing import Dict, Iterator, Optional
@@ -23,11 +24,21 @@ PAYPAL_PREFIX = "PayPal Europe S.a.r.l."
 DEFAULT_EXPORT_SUFFIX = "-ynab.csv"
 DEFAULT_DRY_RUN_LIMIT = 10
 DKB_EXPORT_FILENAME_PATTERN = re.compile(
-    r"^(?P<date>\d{2}-\d{2}-\d{4})_Umsatzliste_(?P<account>Girokonto|VISA)_(?!.*-ynab\.csv$).+\.csv$",
+    r"^(?P<date>\d{2}-\d{2}-\d{4})_Umsatzliste_"
+    r"(?P<account>Girokonto|VISA)_(?!.*-ynab\.csv$).+\.csv$",
     re.IGNORECASE,
 )
 
 LOGGER = logging.getLogger(__name__)
+
+
+@dataclass
+class ConversionResult:
+    """Summary of a conversion run."""
+
+    export_path: Path
+    rows_written: int
+    rows_skipped: int
 
 
 @contextmanager
@@ -81,7 +92,8 @@ def resolve_input_file(path: str, latest: bool = False) -> Path:
         return input_path
     if not latest:
         raise ValueError(
-            f"{input_path} is a directory. Use --latest to select the newest DKB export automatically."
+            f"{input_path} is a directory. "
+            "Use --latest to select the newest DKB export automatically."
         )
 
     candidates: list[tuple[datetime, Path]] = []
@@ -125,6 +137,26 @@ def convert_date_format(date_str: str) -> str:
         except ValueError:
             continue
     return date_str
+
+
+def parse_dkb_date(date_str: str) -> Optional[date]:
+    """Parse a DKB transaction date."""
+    for fmt in ("%d.%m.%y", "%d.%m.%Y"):
+        try:
+            return datetime.strptime(date_str, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def parse_since_date(date_str: str) -> date:
+    """Parse a --since date."""
+    for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%d.%m.%y"):
+        try:
+            return datetime.strptime(date_str, fmt).date()
+        except ValueError:
+            continue
+    raise ValueError("Invalid --since date. Use YYYY-MM-DD, DD.MM.YYYY, or DD.MM.YY.")
 
 
 def extract_paypal_store(memo: str) -> str:
@@ -186,6 +218,46 @@ def build_row(date: str, payee: str, memo: str, amount: float) -> Dict[str, obje
     }
 
 
+def build_ynab_row(
+    source_row: Dict[str, str], filetype: AccountType
+) -> Optional[Dict[str, object]]:
+    """Build a YNAB row from a DKB source row, or skip invalid amount rows."""
+    date_value = convert_date_format(source_row.get("Wertstellung", "").strip())
+
+    if filetype == AccountType.VISA:
+        payee = normalize_text(source_row.get("Beschreibung", ""))
+        memo = normalize_text(source_row.get("", ""))
+        amount = parse_amount(source_row.get("Betrag (EUR)", ""))
+        if amount is None:
+            return None
+        payee = normalize_text(normalize_payee(payee, memo))
+        return build_row(date_value, payee, memo, amount)
+
+    if filetype == AccountType.GIROKONTO:
+        amount = parse_amount(source_row.get("Betrag (€)", ""))
+        if amount is None:
+            return None
+        if amount > 0:
+            payee = source_row.get("Zahlungspflichtige*r", "")
+        else:
+            payee = source_row.get("Zahlungsempfänger*in", "")
+        memo = source_row.get("Verwendungszweck", "")
+        payee = normalize_text(payee)
+        memo = normalize_text(memo)
+        payee = normalize_text(normalize_payee(payee, memo))
+        return build_row(date_value, payee, memo, amount)
+
+    raise ValueError(f"Unsupported account type: {filetype}")
+
+
+def should_include_row(source_row: Dict[str, str], since: Optional[date]) -> bool:
+    """Return whether a source row should be included after date filtering."""
+    if since is None:
+        return True
+    transaction_date = parse_dkb_date(source_row.get("Wertstellung", "").strip())
+    return bool(transaction_date and transaction_date >= since)
+
+
 def validate_columns(fieldnames: Optional[list[str]], required: list[str]) -> None:
     """Ensure required columns exist in the CSV header."""
     if not fieldnames:
@@ -210,23 +282,49 @@ def get_required_columns(filetype: AccountType) -> list[str]:
     raise ValueError(f"Unsupported account type: {filetype}")
 
 
-def convert(
-    filename: str, filetype: AccountType, output: Optional[Path] = None
+def get_default_export_path(source_path: Path) -> Path:
+    """Return the default export path for a source file."""
+    return source_path.with_name(f"{source_path.stem}{DEFAULT_EXPORT_SUFFIX}")
+
+
+def resolve_output_path(
+    source_path: Path, output: Optional[Path] = None, output_dir: Optional[Path] = None
 ) -> Path:
-    """Convert the file given by filename according to the given type. Export to the same directory."""
+    """Resolve the output path from CLI output options."""
+    if output and output_dir:
+        raise ValueError("Use either --output or --output-dir, not both.")
+    if output:
+        return output.expanduser().resolve()
+    if output_dir:
+        directory = output_dir.expanduser().resolve()
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory / f"{source_path.stem}{DEFAULT_EXPORT_SUFFIX}"
+    return get_default_export_path(source_path)
+
+
+def get_account_offset(filetype: AccountType) -> int:
+    """Return the number of pre-header rows for the account type."""
     if filetype == AccountType.VISA:
-        offset = 6
-    elif filetype == AccountType.GIROKONTO:
-        offset = 4
-    else:
-        raise ValueError(f"Unsupported account type: {filetype}")
+        return 6
+    if filetype == AccountType.GIROKONTO:
+        return 4
+    raise ValueError(f"Unsupported account type: {filetype}")
+
+
+def convert_with_summary(
+    filename: str,
+    filetype: AccountType,
+    output: Optional[Path] = None,
+    output_dir: Optional[Path] = None,
+    since: Optional[date] = None,
+) -> ConversionResult:
+    """Convert the file given by filename and return a summary."""
+    offset = get_account_offset(filetype)
 
     source_path = Path(filename).expanduser().resolve()
-    export_path = (
-        output.expanduser().resolve()
-        if output
-        else source_path.with_name(f"{source_path.stem}{DEFAULT_EXPORT_SUFFIX}")
-    )
+    export_path = resolve_output_path(source_path, output=output, output_dir=output_dir)
+    rows_written = 0
+    rows_skipped = 0
 
     with open_csv_reader(str(source_path), offset) as reader, open(
         export_path, mode="w", encoding="utf-8", newline=""
@@ -239,43 +337,39 @@ def convert(
         )
 
         for row in reader:
-            date = convert_date_format(row.get("Wertstellung", "").strip())
+            if not should_include_row(row, since):
+                rows_skipped += 1
+                continue
 
-            if filetype == AccountType.VISA:
-                payee = normalize_text(row.get("Beschreibung", ""))
-                memo = normalize_text(row.get("", ""))
-                amount = parse_amount(row.get("Betrag (EUR)", ""))
-                if amount is None:
-                    continue
-                payee = normalize_text(normalize_payee(payee, memo))
-                writer.writerow(build_row(date, payee, memo, amount))
-            elif filetype == AccountType.GIROKONTO:
-                amount = parse_amount(row.get("Betrag (€)", ""))
-                if amount is None:
-                    continue
-                if amount > 0:
-                    payee = row.get("Zahlungspflichtige*r", "")
-                else:
-                    payee = row.get("Zahlungsempfänger*in", "")
-                memo = row.get("Verwendungszweck", "")
-                payee = normalize_text(payee)
-                memo = normalize_text(memo)
-                payee = normalize_text(normalize_payee(payee, memo))
-                writer.writerow(build_row(date, payee, memo, amount))
+            output_row = build_ynab_row(row, filetype)
+            if output_row is None:
+                rows_skipped += 1
+                continue
 
-    return export_path
+            writer.writerow(output_row)
+            rows_written += 1
+
+    return ConversionResult(export_path, rows_written, rows_skipped)
+
+
+def convert(
+    filename: str, filetype: AccountType, output: Optional[Path] = None
+) -> Path:
+    """Convert the file given by filename according to the given type."""
+    result = convert_with_summary(filename, filetype, output=output)
+    return result.export_path
 
 
 def preview(
-    filename: str, filetype: AccountType, limit: int = DEFAULT_DRY_RUN_LIMIT
-) -> None:
+    filename: str,
+    filetype: AccountType,
+    limit: int = DEFAULT_DRY_RUN_LIMIT,
+    since: Optional[date] = None,
+) -> ConversionResult:
     """Write a preview of the converted rows to stdout."""
-    if filetype == AccountType.VISA:
-        offset = 6
-    elif filetype == AccountType.GIROKONTO:
-        offset = 4
-    else:
-        raise ValueError(f"Unsupported account type: {filetype}")
+    offset = get_account_offset(filetype)
+    rows_written = 0
+    rows_skipped = 0
 
     with open_csv_reader(filename, offset) as reader:
         validate_columns(
@@ -284,32 +378,23 @@ def preview(
         )
         writer = csv.DictWriter(sys.stdout, fieldnames=YNAB_FIELDNAMES)
         writer.writeheader()
-        for index, row in enumerate(reader, start=1):
-            date = convert_date_format(row.get("Wertstellung", "").strip())
-            if filetype == AccountType.VISA:
-                payee = normalize_text(row.get("Beschreibung", ""))
-                memo = normalize_text(row.get("", ""))
-                amount = parse_amount(row.get("Betrag (EUR)", ""))
-                if amount is None:
-                    continue
-                payee = normalize_text(normalize_payee(payee, memo))
-                writer.writerow(build_row(date, payee, memo, amount))
-            else:
-                amount = parse_amount(row.get("Betrag (€)", ""))
-                if amount is None:
-                    continue
-                if amount > 0:
-                    payee = row.get("Zahlungspflichtige*r", "")
-                else:
-                    payee = row.get("Zahlungsempfänger*in", "")
-                memo = row.get("Verwendungszweck", "")
-                payee = normalize_text(payee)
-                memo = normalize_text(memo)
-                payee = normalize_text(normalize_payee(payee, memo))
-                writer.writerow(build_row(date, payee, memo, amount))
+        for row in reader:
+            if not should_include_row(row, since):
+                rows_skipped += 1
+                continue
 
-            if index >= limit:
+            output_row = build_ynab_row(row, filetype)
+            if output_row is None:
+                rows_skipped += 1
+                continue
+
+            writer.writerow(output_row)
+            rows_written += 1
+
+            if rows_written >= limit:
                 break
+
+    return ConversionResult(Path(filename), rows_written, rows_skipped)
 
 
 def main() -> None:
@@ -335,6 +420,17 @@ def main() -> None:
         "-o",
         "--output",
         help="Output filename (defaults to input name with -ynab.csv).",
+    )
+    parser.add_argument(
+        "--output-dir",
+        help="Output directory (defaults to the input file directory).",
+    )
+    parser.add_argument(
+        "--since",
+        help=(
+            "Only export rows on or after this date "
+            "(YYYY-MM-DD, DD.MM.YYYY, or DD.MM.YY)."
+        ),
     )
     parser.add_argument(
         "--dry-run",
@@ -372,14 +468,33 @@ def main() -> None:
 
         filetype = args.account_type or detect_account_type(str(input_file))
         LOGGER.debug("Detected account type: %s", filetype.value)
+        since = parse_since_date(args.since) if args.since else None
 
         if args.dry_run:
-            preview(str(input_file), filetype, args.limit)
+            if args.output or args.output_dir:
+                raise ValueError(
+                    "--output and --output-dir cannot be used with --dry-run."
+                )
+            result = preview(str(input_file), filetype, args.limit, since=since)
+            print(
+                f"Preview rows: {result.rows_written}; rows skipped: {result.rows_skipped}",
+                file=sys.stderr,
+            )
             return
 
         output = Path(args.output) if args.output else None
-        export_path = convert(str(input_file), filetype, output=output)
-        print(f"Exported: {export_path}")
+        output_dir = Path(args.output_dir) if args.output_dir else None
+        result = convert_with_summary(
+            str(input_file),
+            filetype,
+            output=output,
+            output_dir=output_dir,
+            since=since,
+        )
+        print(f"Exported: {result.export_path}")
+        print(f"Rows written: {result.rows_written}")
+        print(f"Rows skipped: {result.rows_skipped}")
+        print(f"Account type: {filetype.value}")
 
     except FileNotFoundError as err:
         print(f"{sys.argv[0]}: {args.file}: {err.strerror}", file=sys.stderr)
