@@ -1,4 +1,6 @@
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from ynabifier import (
     build_row,
@@ -6,6 +8,7 @@ from ynabifier import (
     convert_german_to_american,
     extract_paypal_store,
     normalize_text,
+    resolve_input_file,
 )
 
 
@@ -36,6 +39,37 @@ class TestYnabifierHelpers(unittest.TestCase):
         row = build_row("19/02/26", "Payee", "Memo", 12.5)
         self.assertEqual(row["Outflow"], "")
         self.assertEqual(row["Inflow"], "12.50")
+
+    def test_resolve_input_file_picks_latest_matching_export(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            directory = Path(tmpdir)
+            older = directory / "21-02-2026_Umsatzliste_Girokonto_DE51120300001015074436.csv"
+            latest = directory / "21-06-2026_Umsatzliste_Girokonto_DE51120300001015074436.csv"
+            ignored_output = (
+                directory
+                / "22-06-2026_Umsatzliste_Girokonto_DE51120300001015074436-ynab.csv"
+            )
+            for path in (older, latest, ignored_output):
+                path.write_text("", encoding="utf-8")
+
+            self.assertEqual(resolve_input_file(str(directory), latest=True), latest)
+
+    def test_resolve_input_file_requires_matching_export_in_directory(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            directory = Path(tmpdir)
+            (directory / "statement.csv").write_text("", encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "No DKB export files"):
+                resolve_input_file(str(directory), latest=True)
+
+    def test_resolve_input_file_requires_latest_for_directory(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            directory = Path(tmpdir)
+            export = directory / "21-06-2026_Umsatzliste_Girokonto_DE51120300001015074436.csv"
+            export.write_text("", encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "Use --latest"):
+                resolve_input_file(str(directory))
 
 
 if __name__ == "__main__":

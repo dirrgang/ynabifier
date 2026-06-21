@@ -13,12 +13,26 @@ pip install -r requirements.txt
 ```
 
 ## Usage
-Run `ynabifier.py` with the account type and the file path:
+Run `ynabifier.py` with the file path. The account type is autodetected:
 
 ```bash
-python ynabifier.py <AccountType> <input-file.csv>
+python ynabifier.py <input-file.csv>
 ```
-Supported account types are GIROKONTO, VISA, and GIROKONTO_NEU. The output file will be saved in the same directory with '-ynab.csv' appended to the original filename.
+
+You can also pass the account type explicitly:
+
+```bash
+python ynabifier.py Girokonto <input-file.csv>
+python ynabifier.py VISA <input-file.csv>
+```
+
+To convert the newest matching DKB export in a directory, use `--latest`:
+
+```bash
+python ynabifier.py --latest ~/Downloads
+```
+
+The output file will be saved in the same directory with `-ynab.csv` appended to the original filename.
 
 ## License
 GPL-3.0 License - see LICENSE file.

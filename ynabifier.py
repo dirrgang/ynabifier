@@ -22,6 +22,10 @@ YNAB_FIELDNAMES = ["Date", "Payee", "Category", "Memo", "Outflow", "Inflow"]
 PAYPAL_PREFIX = "PayPal Europe S.a.r.l."
 DEFAULT_EXPORT_SUFFIX = "-ynab.csv"
 DEFAULT_DRY_RUN_LIMIT = 10
+DKB_EXPORT_FILENAME_PATTERN = re.compile(
+    r"^(?P<date>\d{2}-\d{2}-\d{4})_Umsatzliste_(?P<account>Girokonto|VISA)_(?!.*-ynab\.csv$).+\.csv$",
+    re.IGNORECASE,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -68,6 +72,37 @@ def detect_account_type(filename: str) -> AccountType:
         return AccountType.VISA
 
     raise ValueError("Unable to detect account type from header columns.")
+
+
+def resolve_input_file(path: str, latest: bool = False) -> Path:
+    """Resolve a file path, or pick the latest matching DKB export when requested."""
+    input_path = Path(path).expanduser()
+    if not input_path.is_dir():
+        return input_path
+    if not latest:
+        raise ValueError(
+            f"{input_path} is a directory. Use --latest to select the newest DKB export automatically."
+        )
+
+    candidates: list[tuple[datetime, Path]] = []
+    for child in input_path.iterdir():
+        if not child.is_file():
+            continue
+        match = DKB_EXPORT_FILENAME_PATTERN.match(child.name)
+        if not match:
+            continue
+        try:
+            export_date = datetime.strptime(match.group("date"), "%d-%m-%Y")
+        except ValueError:
+            continue
+        candidates.append((export_date, child))
+
+    if not candidates:
+        raise ValueError(
+            f"No DKB export files matching the expected naming scheme found in {input_path}."
+        )
+
+    return max(candidates, key=lambda item: (item[0], item[1].name))[1]
 
 
 def convert_german_to_american(number_string: str) -> Optional[float]:
@@ -313,6 +348,11 @@ def main() -> None:
         help="Number of rows to print for --dry-run.",
     )
     parser.add_argument(
+        "--latest",
+        action="store_true",
+        help="If FILE is a directory, use the newest matching DKB export in it.",
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Enable verbose logging.",
@@ -325,15 +365,20 @@ def main() -> None:
             level=logging.DEBUG if args.verbose else logging.INFO,
             format="%(levelname)s: %(message)s",
         )
-        filetype = args.account_type or detect_account_type(args.file)
+        input_file = resolve_input_file(args.file, latest=args.latest)
+        LOGGER.debug("Input file: %s", input_file)
+        if args.latest:
+            print(f"Selected input: {input_file}", file=sys.stderr)
+
+        filetype = args.account_type or detect_account_type(str(input_file))
         LOGGER.debug("Detected account type: %s", filetype.value)
 
         if args.dry_run:
-            preview(args.file, filetype, args.limit)
+            preview(str(input_file), filetype, args.limit)
             return
 
         output = Path(args.output) if args.output else None
-        export_path = convert(args.file, filetype, output=output)
+        export_path = convert(str(input_file), filetype, output=output)
         print(f"Exported: {export_path}")
 
     except FileNotFoundError as err:
