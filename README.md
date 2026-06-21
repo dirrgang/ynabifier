@@ -69,11 +69,13 @@ Preview the converted CSV without writing a file:
 dkb-to-ynab4 --dry-run <input-file.csv>
 ```
 
-When running directly from a source checkout without installing, use:
+When running directly from a source checkout without installing, use the Python module name:
 
 ```bash
-python dkb_to_ynab4.py <input-file.csv>
+python -m dkb_to_ynab4 <input-file.csv>
 ```
+
+The installed command is named `dkb-to-ynab4`; the Python module uses underscores because Python module names cannot contain hyphens.
 
 ## Development
 Run the test suite with:
